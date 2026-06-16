@@ -134,17 +134,19 @@ jobs:
 
           rm "$RUNNER_TEMP/private_key.pem" "$RUNNER_TEMP/aes.key"
 
-      - name: Build signed release APK
+      - name: Build signed release APK and bundle
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
 
-      - name: Upload APK artifact
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release.apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -153,4 +155,6 @@ jobs:
           name: Build ${{ github.run_number }}
           body: |
             Automated signed release build from commit ${{ github.sha }}.
-          files: app/build/outputs/apk/release/app-release.apk
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
