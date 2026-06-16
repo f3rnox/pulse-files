@@ -1,7 +1,9 @@
 package com.f3rno.pulsefiles.data
 
+import android.content.Context
 import com.f3rno.pulsefiles.model.FileItem
 import com.f3rno.pulsefiles.model.SortOrder
+import com.f3rno.pulsefiles.util.deleteStorageFile
 import com.f3rno.pulsefiles.util.listChildren
 import java.io.File
 
@@ -22,7 +24,7 @@ data class DirectoryListing(
  * All operations run synchronously and should be invoked from a background
  * dispatcher by the caller.
  */
-class FileManager {
+class FileManager(private val context: Context) {
 
     /**
      * Lists the children of a directory, applying sorting and an optional
@@ -39,6 +41,41 @@ class FileManager {
             .filter { showHidden || !it.name.startsWith(".") }
             .map { FileItem.from(it) }
         return DirectoryListing(items = sort(items, sortOrder))
+    }
+
+    /**
+     * Searches for entries under [root] whose names contain [query].
+     *
+     * When [query] is blank, only the immediate children of [root] are returned
+     * (same as [list]). Otherwise every descendant of [root] is searched.
+     *
+     * @param root The directory to search from.
+     * @param query Case-insensitive name filter.
+     * @param sortOrder The ordering to apply to results.
+     * @param showHidden Whether dot-files should be included.
+     * @return Matching entries or an access-denied flag.
+     */
+    fun search(root: File, query: String, sortOrder: SortOrder, showHidden: Boolean): DirectoryListing {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return list(root, sortOrder, showHidden)
+
+        if (listChildren(root) == null) return DirectoryListing(accessDenied = root.exists())
+        val matches = mutableListOf<FileItem>()
+        collectMatches(root, trimmed, showHidden, matches)
+        return DirectoryListing(items = sort(matches, sortOrder))
+    }
+
+    private fun collectMatches(dir: File, query: String, showHidden: Boolean, out: MutableList<FileItem>) {
+        val children = listChildren(dir) ?: return
+        for (child in children) {
+            if (!showHidden && child.name.startsWith(".")) continue
+            if (child.name.contains(query, ignoreCase = true)) {
+                out.add(FileItem.from(child))
+            }
+            if (child.isDirectory) {
+                collectMatches(child, query, showHidden, out)
+            }
+        }
     }
 
     /**
@@ -91,7 +128,7 @@ class FileManager {
      * @return True when every entry was deleted.
      */
     fun delete(items: List<FileItem>): Boolean {
-        return items.all { it.file.deleteRecursively() }
+        return items.all { deleteStorageFile(context, it.file) }
     }
 
     /**

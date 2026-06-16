@@ -215,6 +215,9 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                         FileRow(
                             item = item,
                             selected = item.path in state.selected,
+                            subtitlePrefix = state.searchQuery?.let {
+                                parentRelativePath(state.currentPath, item.path).takeIf { path -> path.isNotEmpty() }
+                            },
                             onClick = {
                                 if (state.selectionMode || item.isDirectory) {
                                     viewModel.onItemClick(item)
@@ -411,7 +414,7 @@ private fun SearchTopBar(query: String, onQueryChange: (String) -> Unit, onClose
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search this folder") },
+                placeholder = { Text("Search this folder and subfolders") },
                 singleLine = true,
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
@@ -469,6 +472,12 @@ private data class Crumb(val label: String, val path: String)
  * @param root The storage root path.
  * @return Ordered breadcrumb segments.
  */
+private fun parentRelativePath(searchRoot: String, itemPath: String): String {
+    val parentPath = File(itemPath).parent ?: return ""
+    if (parentPath == searchRoot) return ""
+    return parentPath.removePrefix(searchRoot).trimStart('/')
+}
+
 private fun buildCrumbs(path: String, root: String): List<Crumb> {
     val normalizedPath = runCatching { File(path).canonicalPath }.getOrDefault(path)
     val normalizedRoot = runCatching { File(root).canonicalPath }.getOrDefault(root)

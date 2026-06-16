@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.f3rno.pulsefiles.util.hasBrowsableStorageAccess
+import com.f3rno.pulsefiles.util.hasWritableStorageAccess
 import com.f3rno.pulsefiles.util.openAllFilesAccessSettings
 
 /**
@@ -48,7 +48,7 @@ fun StoragePermissionGate(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val appContext = context.applicationContext
 
-    fun checkAccess(): Boolean = hasBrowsableStorageAccess(appContext)
+    fun checkAccess(): Boolean = hasWritableStorageAccess(appContext)
 
     var granted by remember { mutableStateOf(checkAccess()) }
 
@@ -69,7 +69,7 @@ fun StoragePermissionGate(content: @Composable () -> Unit) {
 
     fun requestPermissions() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            legacyLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            legacyLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else {
             openAllFilesAccessSettings(context)
         }
@@ -105,7 +105,7 @@ fun StoragePermissionGate(content: @Composable () -> Unit) {
                 "Pulse Files needs \"All files access\" to browse and manage files on your device. " +
                     "Enable it on the next screen, then return here."
             } else {
-                "Pulse Files needs access to your device storage to browse and manage your files."
+                "Pulse Files needs storage access to browse, delete, and manage your files."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -22,7 +22,7 @@ import java.io.File
  */
 class FileBrowserViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val fileManager = FileManager()
+    private val fileManager = FileManager(application.applicationContext)
 
     private val rootPath: String = primaryStoragePath(application)
 
@@ -84,6 +84,11 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
     fun refresh() {
         val state = _uiState.value
         if (state.currentPath.isEmpty()) return
+        val query = state.searchQuery
+        if (query != null) {
+            runSearch(query)
+            return
+        }
         viewModelScope.launch {
             val listing = withContext(Dispatchers.IO) {
                 fileManager.list(File(state.currentPath), state.sortOrder, state.showHidden)
@@ -177,13 +182,27 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
             refresh()
             return
         }
+        runSearch(query)
+    }
+
+    private fun runSearch(query: String) {
         viewModelScope.launch {
             val state = _uiState.value
             val listing = withContext(Dispatchers.IO) {
-                fileManager.list(File(state.currentPath), state.sortOrder, state.showHidden)
+                fileManager.search(File(state.currentPath), query, state.sortOrder, state.showHidden)
             }
-            val filtered = listing.items.filter { it.name.contains(query, ignoreCase = true) }
-            _uiState.update { it.copy(items = filtered, accessDenied = listing.accessDenied) }
+            _uiState.update {
+                it.copy(
+                    items = listing.items,
+                    isLoading = false,
+                    accessDenied = listing.accessDenied,
+                    errorMessage = if (listing.accessDenied) {
+                        "Cannot read this folder. Grant \"All files access\" in system settings."
+                    } else {
+                        null
+                    }
+                )
+            }
         }
     }
 

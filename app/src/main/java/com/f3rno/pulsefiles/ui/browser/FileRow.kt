@@ -35,6 +35,7 @@ import com.f3rno.pulsefiles.util.formatSize
  * @param selected Whether the entry is selected.
  * @param onClick Invoked on tap.
  * @param onLongClick Invoked on long press.
+ * @param subtitlePrefix Optional leading text for the subtitle (e.g. parent folder in search results).
  * @param onMenuClick Invoked when the overflow button is tapped.
  */
 @Composable
@@ -43,7 +44,8 @@ fun FileRow(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onMenuClick: () -> Unit
+    onMenuClick: () -> Unit,
+    subtitlePrefix: String? = null
 ) {
     val category = categoryOf(item)
     val container = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
@@ -92,7 +94,7 @@ fun FileRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = subtitle(item),
+                    text = subtitle(item, subtitlePrefix),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -112,11 +114,12 @@ fun FileRow(
  * @param item The entry.
  * @return The subtitle string.
  */
-private fun subtitle(item: FileItem): String {
+private fun subtitle(item: FileItem, prefix: String?): String {
     val meta = if (item.isDirectory) {
         item.childCount?.let { "$it item${if (it == 1) "" else "s"}" } ?: "Folder"
     } else {
         formatSize(item.size)
     }
-    return "$meta  •  ${formatDate(item.lastModified)}"
+    val details = "$meta  •  ${formatDate(item.lastModified)}"
+    return if (prefix != null) "$prefix  •  $details" else details
 }

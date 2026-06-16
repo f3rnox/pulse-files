@@ -68,6 +68,25 @@ fun hasBrowsableStorageAccess(context: Context): Boolean {
     return hasReadExternalStorage(context)
 }
 
+/**
+ * Returns whether the app can delete files on shared storage.
+ *
+ * @param context Used for permission checks.
+ * @return True when delete operations should be allowed.
+ */
+fun hasWritableStorageAccess(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        return Environment.isExternalStorageManager()
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        return ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+    return true
+}
+
 private fun hasReadExternalStorage(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(
         context,
