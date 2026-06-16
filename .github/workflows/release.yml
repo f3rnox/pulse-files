@@ -25,7 +25,7 @@ permissions:
 #             app/keystore/release.keystore.key.enc
 #
 #   Required GitHub secrets:
-#     ENCRYPTION_PRIVATE_KEY  – RSA private key matching encryption_public_key.pem (PEM, full text)
+#     ENCRYPTION_PRIVATE_KEY  – RSA private key, base64-encoded: base64 -w0 private_key.pem
 #     KEYSTORE_PASSWORD       – keystore store password
 #     KEY_ALIAS               – signing key alias
 #     KEY_PASSWORD            – signing key password
@@ -73,7 +73,7 @@ jobs:
           ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "$ENCRYPTION_PRIVATE_KEY" > "$RUNNER_TEMP/private_key.pem"
+          echo "$ENCRYPTION_PRIVATE_KEY" | base64 -d > "$RUNNER_TEMP/private_key.pem"
           openssl pkeyutl -decrypt \
             -inkey "$RUNNER_TEMP/private_key.pem" \
             -in app/keystore/release.keystore.key.enc \
