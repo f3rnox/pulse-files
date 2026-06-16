@@ -28,12 +28,15 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Decode keystore
+      - name: Decrypt keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_ENCRYPT_PASSWORD: ${{ secrets.KEYSTORE_ENCRYPT_PASSWORD }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          openssl enc -aes-256-cbc -pbkdf2 -d \
+            -in app/keystore/release.keystore.enc \
+            -out "$RUNNER_TEMP/release.keystore" \
+            -pass "env:KEYSTORE_ENCRYPT_PASSWORD"
           keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_PASSWORD" >/dev/null
 
       - name: Build signed release APK
