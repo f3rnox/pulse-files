@@ -13,6 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
-# Never commit raw signing keystores (the encrypted .enc is OK)
+# Never commit raw signing keystores or plaintext AES keys
+# Encrypted forms (.enc, .key.enc) are safe to commit
 *.keystore
 *.jks
+aes.key

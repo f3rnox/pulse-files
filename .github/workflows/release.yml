@@ -8,6 +8,28 @@ on:
 permissions:
   contents: write
 
+# Keystore encryption scheme (hybrid RSA + AES):
+#
+#   Encrypt (run locally before committing):
+#     openssl rand 32 > aes.key
+#     openssl enc -aes-256-cbc -pbkdf2 \
+#       -in  release.keystore \
+#       -out app/keystore/release.keystore.enc \
+#       -pass file:aes.key
+#     openssl pkeyutl -encrypt -pubin \
+#       -inkey encryption_public_key.pem \
+#       -in  aes.key \
+#       -out app/keystore/release.keystore.key.enc
+#     rm aes.key
+#     git add app/keystore/release.keystore.enc \
+#             app/keystore/release.keystore.key.enc
+#
+#   Required GitHub secrets:
+#     ENCRYPTION_PRIVATE_KEY  – RSA private key matching encryption_public_key.pem (PEM, full text)
+#     KEYSTORE_PASSWORD       – keystore store password
+#     KEY_ALIAS               – signing key alias
+#     KEY_PASSWORD            – signing key password
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -30,14 +52,22 @@ jobs:
 
       - name: Decrypt keystore
         env:
-          KEYSTORE_ENCRYPT_PASSWORD: ${{ secrets.KEYSTORE_ENCRYPT_PASSWORD }}
+          ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
+          echo "$ENCRYPTION_PRIVATE_KEY" > "$RUNNER_TEMP/private_key.pem"
+          openssl pkeyutl -decrypt \
+            -inkey "$RUNNER_TEMP/private_key.pem" \
+            -in app/keystore/release.keystore.key.enc \
+            -out "$RUNNER_TEMP/aes.key"
           openssl enc -aes-256-cbc -pbkdf2 -d \
             -in app/keystore/release.keystore.enc \
             -out "$RUNNER_TEMP/release.keystore" \
-            -pass "env:KEYSTORE_ENCRYPT_PASSWORD"
-          keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_PASSWORD" >/dev/null
+            -pass "file:$RUNNER_TEMP/aes.key"
+          keytool -list \
+            -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass "$KEYSTORE_PASSWORD" > /dev/null
+          rm "$RUNNER_TEMP/private_key.pem" "$RUNNER_TEMP/aes.key"
 
       - name: Build signed release APK
         env:
