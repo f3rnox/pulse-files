@@ -24,10 +24,11 @@ android {
     signingConfigs {
         if (keystoreFile != null) {
             create("release") {
+                val storePass = System.getenv("KEYSTORE_PASSWORD")
                 storeFile = file(keystoreFile)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                storePassword = storePass
                 keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                keyPassword = System.getenv("KEY_PASSWORD") ?: storePass
             }
         }
     }
