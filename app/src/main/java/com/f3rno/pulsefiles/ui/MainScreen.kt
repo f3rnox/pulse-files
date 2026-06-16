@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Settings
@@ -23,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.f3rno.pulsefiles.data.StartupTab
+import com.f3rno.pulsefiles.ui.apps.AppManagerScreen
 import com.f3rno.pulsefiles.ui.browser.FileBrowserScreen
 import com.f3rno.pulsefiles.ui.browser.FolderPickerDialog
 import com.f3rno.pulsefiles.ui.clean.CleanScreen
@@ -31,7 +33,7 @@ import com.f3rno.pulsefiles.ui.settings.SettingsScreen
 import com.f3rno.pulsefiles.ui.settings.SettingsViewModel
 
 enum class AppTab {
-    CLEAN, BROWSE, SETTINGS
+    CLEAN, BROWSE, APPS, SETTINGS
 }
 
 private fun StartupTab.toAppTab(): AppTab = when (this) {
@@ -74,6 +76,17 @@ fun MainScreen(settingsViewModel: SettingsViewModel = viewModel()) {
                     label = { Text("Browse") }
                 )
                 NavigationBarItem(
+                    selected = currentTab == AppTab.APPS,
+                    onClick = { currentTab = AppTab.APPS },
+                    icon = {
+                        Icon(
+                            Icons.Outlined.Apps,
+                            contentDescription = "Apps"
+                        )
+                    },
+                    label = { Text("Apps") }
+                )
+                NavigationBarItem(
                     selected = currentTab == AppTab.SETTINGS,
                     onClick = { currentTab = AppTab.SETTINGS },
                     icon = {
@@ -95,6 +108,7 @@ fun MainScreen(settingsViewModel: SettingsViewModel = viewModel()) {
             when (currentTab) {
                 AppTab.CLEAN -> CleanScreen()
                 AppTab.BROWSE -> FileBrowserScreen()
+                AppTab.APPS -> AppManagerScreen(onClose = { currentTab = AppTab.BROWSE })
                 AppTab.SETTINGS -> SettingsScreen(
                     viewModel = settingsViewModel,
                     onRequestFolderPicker = { onSelected ->

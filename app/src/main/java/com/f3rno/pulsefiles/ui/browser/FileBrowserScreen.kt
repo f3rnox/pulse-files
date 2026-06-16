@@ -85,6 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import java.io.File
@@ -104,6 +105,8 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+
 
     BackHandler(enabled = state.selectionMode || state.searchQuery != null || state.canNavigateUp) {
         when {
