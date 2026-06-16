@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+# Never commit raw signing keystores (the encrypted .enc is OK)
+*.keystore
+*.jks
