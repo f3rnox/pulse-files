@@ -29,6 +29,7 @@ data class Clipboard(
  * @property isLoading Whether a directory load is in progress.
  * @property sortOrder Active sort order.
  * @property showHidden Whether hidden files are shown.
+ * @property confirmBeforeDelete Whether deletes require confirmation.
  * @property searchQuery Current search filter text, or null when search is closed.
  * @property clipboard Staged copy/move clipboard, or null when empty.
  * @property canNavigateUp Whether the parent directory is reachable.
@@ -43,6 +44,7 @@ data class BrowserUiState(
     val isLoading: Boolean = false,
     val sortOrder: SortOrder = SortOrder.NAME_ASC,
     val showHidden: Boolean = false,
+    val confirmBeforeDelete: Boolean = true,
     val searchQuery: String? = null,
     val clipboard: Clipboard? = null,
     val canNavigateUp: Boolean = false,

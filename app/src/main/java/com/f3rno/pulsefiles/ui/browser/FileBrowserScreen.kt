@@ -71,6 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.f3rno.pulsefiles.model.FileCategory
 import com.f3rno.pulsefiles.model.FileItem
+import com.f3rno.pulsefiles.ui.settings.SettingsViewModel
 import com.f3rno.pulsefiles.ui.viewer.AudioPlayer
 import com.f3rno.pulsefiles.ui.viewer.ImageViewer
 import com.f3rno.pulsefiles.ui.viewer.TextEditor
@@ -92,6 +93,8 @@ import java.io.File
 @Composable
 fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val settingsViewModel: SettingsViewModel = viewModel()
+    val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -112,8 +115,30 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
     var sheetTarget by remember { mutableStateOf<FileItem?>(null) }
     var overflowOpen by remember { mutableStateOf(false) }
     var activeViewerTarget by remember { mutableStateOf<FileItem?>(null) }
+    var showMoveDestination by remember { mutableStateOf(false) }
+
+    fun startMove() {
+        showMoveDestination = true
+    }
 
     LaunchedEffect(Unit) { viewModel.start() }
+
+    LaunchedEffect(
+        settings.defaultSortOrder,
+        settings.showHiddenByDefault,
+        settings.confirmBeforeDelete,
+        settings.recursiveSearch
+    ) {
+        viewModel.applySettings()
+    }
+
+    fun requestDelete() {
+        if (state.confirmBeforeDelete) {
+            showDeleteDialog = true
+        } else {
+            viewModel.deleteSelected()
+        }
+    }
 
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
@@ -154,8 +179,11 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                     onClose = viewModel::clearSelection,
                     onSelectAll = viewModel::selectAll,
                     onCopy = viewModel::copySelection,
-                    onCut = viewModel::cutSelection,
-                    onDelete = { showDeleteDialog = true },
+                    onCut = {
+                        viewModel.cutSelection()
+                        startMove()
+                    },
+                    onDelete = { requestDelete() },
                     onShare = { shareFiles(context, state.selectedItems) }
                 )
                 state.searchQuery != null -> SearchTopBar(
@@ -180,10 +208,26 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
         },
         floatingActionButton = {
             if (state.clipboard != null) {
+                val isMove = state.clipboard?.mode == ClipboardMode.MOVE
                 ExtendedFloatingActionButton(
-                    onClick = viewModel::paste,
-                    icon = { Icon(Icons.Outlined.ContentPaste, contentDescription = null) },
-                    text = { Text("Paste (${state.clipboard?.items?.size ?: 0})") }
+                    onClick = {
+                        if (isMove) startMove() else viewModel.paste()
+                    },
+                    icon = {
+                        Icon(
+                            if (isMove) Icons.Outlined.ContentCut else Icons.Outlined.ContentPaste,
+                            contentDescription = null
+                        )
+                    },
+                    text = {
+                        Text(
+                            if (isMove) {
+                                "Move (${state.clipboard?.items?.size ?: 0})"
+                            } else {
+                                "Paste (${state.clipboard?.items?.size ?: 0})"
+                            }
+                        )
+                    }
                 )
             } else if (!state.selectionMode) {
                 FloatingActionButton(onClick = { showCreateFolder = true }) {
@@ -307,7 +351,7 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
             onDelete = {
                 sheetTarget = null
                 viewModel.onItemLongClick(target)
-                showDeleteDialog = true
+                requestDelete()
             },
             onCopy = {
                 sheetTarget = null
@@ -319,12 +363,27 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                 sheetTarget = null
                 viewModel.onItemLongClick(target)
                 viewModel.cutSelection()
-                scope.launch { snackbarHostState.showSnackbar("Cut. Navigate and tap Paste.") }
+                startMove()
             },
             onDetails = {
                 sheetTarget = null
                 detailsTarget = target
             }
+        )
+    }
+
+    if (showMoveDestination && state.clipboard?.mode == ClipboardMode.MOVE) {
+        val moveItems = state.clipboard?.items.orEmpty()
+        FolderDestinationSheet(
+            title = "Move to folder",
+            confirmLabel = "Move here",
+            initialPath = state.currentPath.ifEmpty { primaryStoragePath(context) },
+            isDestinationValid = { path -> viewModel.canMoveTo(path, moveItems) },
+            onConfirm = { path ->
+                showMoveDestination = false
+                viewModel.pasteTo(path)
+            },
+            onDismiss = { showMoveDestination = false }
         )
     }
 }

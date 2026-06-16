@@ -5,6 +5,7 @@ import android.os.Environment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.f3rno.pulsefiles.data.IgnoredLargeFilesStore
+import com.f3rno.pulsefiles.data.SettingsStore
 import com.f3rno.pulsefiles.util.deleteStorageFile
 import com.f3rno.pulsefiles.util.hasWritableStorageAccess
 import com.f3rno.pulsefiles.util.normalizeStoragePath
@@ -58,11 +59,14 @@ class CleanViewModel(application: Application) : AndroidViewModel(application) {
 
     private val rootPath: String = primaryStoragePath(application)
     private val ignoredLargeFilesStore = IgnoredLargeFilesStore(application)
+    private val settingsStore = SettingsStore.get(application)
     private var scanJob: Job? = null
 
     init {
         refreshStorageInfo()
-        startScan()
+        if (settingsStore.snapshot().autoScanOnLaunch) {
+            startScan()
+        }
     }
 
     /**
@@ -195,6 +199,7 @@ class CleanViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     private fun performScan(): ScanResult {
+        val settings = settingsStore.snapshot()
         val root = File(rootPath)
         val junk = mutableListOf<File>()
         val large = mutableListOf<File>()
@@ -206,9 +211,8 @@ class CleanViewModel(application: Application) : AndroidViewModel(application) {
 
         val downloadDir = File(root, "Download")
 
-        // Walk the directory structure up to 5 levels to keep it fast and responsive
         root.walkTopDown()
-            .maxDepth(5)
+            .maxDepth(settings.scanDepth)
             .onFail { _, _ -> /* ignore inaccessible folders */ }
             .forEach { file ->
                 if (!file.isFile) return@forEach
@@ -217,48 +221,41 @@ class CleanViewModel(application: Application) : AndroidViewModel(application) {
                 val name = resolved.name.lowercase()
                 val path = resolved.absolutePath
 
-                // 1. Junk files (tmp, temp, log, or inside cache folders)
                 val isJunk = name.endsWith(".tmp") || name.endsWith(".temp") || name.endsWith(".log") ||
                     path.contains("/cache/", ignoreCase = true) || path.contains("/.cache/", ignoreCase = true)
-                if (isJunk) {
+                if (settings.scanJunk && isJunk) {
                     junk.add(resolved)
                 }
 
-                // 2. Large files (> 10 MB)
-                if (length > 10 * 1024 * 1024L) {
+                if (settings.scanLargeFiles && length > settings.largeFileThresholdBytes) {
                     large.add(resolved)
                 }
 
-                // 3. Download files
-                if (downloadDir.exists() && path.startsWith(downloadDir.absolutePath)) {
+                if (settings.scanDownloads && downloadDir.exists() && path.startsWith(downloadDir.absolutePath)) {
                     downloads.add(resolved)
                 }
 
-                // 4. APK files
-                if (name.endsWith(".apk")) {
+                if (settings.scanApks && name.endsWith(".apk")) {
                     apks.add(resolved)
                 }
 
-                // 5. Duplicates candidates (only files > 100 bytes to avoid matching empty or tiny system files)
-                if (length > 100L && !isJunk) {
+                if (settings.scanDuplicates && length > 100L && !isJunk) {
                     sizeMap.getOrPut(length) { mutableListOf() }.add(resolved)
                 }
             }
 
-        // Process duplicates
         val duplicates = mutableListOf<DuplicateGroup>()
-        for ((size, files) in sizeMap) {
-            if (files.size > 1) {
-                // Group files of same size by their partial hash (first 8KB) to be incredibly fast
-                val hashGroups = files.groupBy { file ->
-                    val hash = quickHash(file)
-                    // If quickHash fails or is empty, group by name + size
-                    if (hash.isEmpty()) file.name else hash
-                }
-                for (group in hashGroups.values) {
-                    if (group.size > 1) {
-                        // The first file is original, the rest are duplicates
-                        duplicates.add(DuplicateGroup(size = size, original = group[0], duplicates = group.drop(1)))
+        if (settings.scanDuplicates) {
+            for ((size, files) in sizeMap) {
+                if (files.size > 1) {
+                    val hashGroups = files.groupBy { file ->
+                        val hash = quickHash(file)
+                        if (hash.isEmpty()) file.name else hash
+                    }
+                    for (group in hashGroups.values) {
+                        if (group.size > 1) {
+                            duplicates.add(DuplicateGroup(size = size, original = group[0], duplicates = group.drop(1)))
+                        }
                     }
                 }
             }

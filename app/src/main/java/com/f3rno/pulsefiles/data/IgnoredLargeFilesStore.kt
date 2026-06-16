@@ -31,6 +31,17 @@ class IgnoredLargeFilesStore(context: Context) {
         prefs.edit().putStringSet(KEY_IGNORED_PATHS, HashSet(updated)).apply()
     }
 
+    fun remove(paths: Set<String>) {
+        if (paths.isEmpty()) return
+        val updated = getIgnoredPaths().toMutableSet()
+        updated.removeAll(paths.map { normalizeStoragePath(it) }.toSet())
+        prefs.edit().putStringSet(KEY_IGNORED_PATHS, HashSet(updated)).apply()
+    }
+
+    fun clear() {
+        prefs.edit().remove(KEY_IGNORED_PATHS).apply()
+    }
+
     /**
      * Drops ignored paths that no longer exist on disk.
      */
