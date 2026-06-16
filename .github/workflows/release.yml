@@ -31,8 +31,10 @@ jobs:
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_PASSWORD" >/dev/null
 
       - name: Build signed release APK
         env:
