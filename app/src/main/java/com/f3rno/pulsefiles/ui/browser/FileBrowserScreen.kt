@@ -75,6 +75,7 @@ import com.f3rno.pulsefiles.ui.settings.SettingsViewModel
 import com.f3rno.pulsefiles.ui.viewer.AudioPlayer
 import com.f3rno.pulsefiles.ui.viewer.ImageViewer
 import com.f3rno.pulsefiles.ui.viewer.TextEditor
+import com.f3rno.pulsefiles.ui.viewer.VideoPlayer
 import com.f3rno.pulsefiles.util.categoryOf
 import com.f3rno.pulsefiles.util.openAllFilesAccessSettings
 import com.f3rno.pulsefiles.util.openFile
@@ -218,6 +219,13 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
             }
             category == FileCategory.AUDIO -> {
                 AudioPlayer(item = target, onClose = { 
+                    activeViewerTarget = null
+                    resolvedViewerTarget = null
+                })
+                return
+            }
+            category == FileCategory.VIDEO -> {
+                VideoPlayer(item = target, onClose = { 
                     activeViewerTarget = null
                     resolvedViewerTarget = null
                 })
