@@ -81,6 +81,11 @@ import com.f3rno.pulsefiles.util.openFile
 import com.f3rno.pulsefiles.util.primaryStoragePath
 import com.f3rno.pulsefiles.util.shareFiles
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import java.io.File
 
 /**
@@ -117,6 +122,11 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
     var activeViewerTarget by remember { mutableStateOf<FileItem?>(null) }
     var showMoveDestination by remember { mutableStateOf(false) }
 
+    var compressTargetSingle by remember { mutableStateOf<FileItem?>(null) }
+    var showCompressSelectedDialog by remember { mutableStateOf(false) }
+    var resolvedViewerTarget by remember { mutableStateOf<FileItem?>(null) }
+    var isExtractingTempFile by remember { mutableStateOf(false) }
+
     fun startMove() {
         showMoveDestination = true
     }
@@ -147,25 +157,83 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
         }
     }
 
-    activeViewerTarget?.let { target ->
+    LaunchedEffect(activeViewerTarget) {
+        val target = activeViewerTarget
+        if (target == null) {
+            resolvedViewerTarget = null
+            return@LaunchedEffect
+        }
+        if (target.path.contains(".zip::", ignoreCase = true)) {
+            isExtractingTempFile = true
+            val tempFile = withContext(Dispatchers.IO) {
+                viewModel.extractZipEntryToCache(target)
+            }
+            isExtractingTempFile = false
+            if (tempFile != null && tempFile.exists()) {
+                resolvedViewerTarget = FileItem(
+                    file = tempFile,
+                    name = target.name,
+                    isDirectory = false,
+                    size = tempFile.length(),
+                    lastModified = tempFile.lastModified(),
+                    childCount = null
+                )
+            } else {
+                resolvedViewerTarget = null
+                activeViewerTarget = null
+                snackbarHostState.showSnackbar("Failed to open file from archive")
+            }
+        } else {
+            resolvedViewerTarget = target
+        }
+    }
+
+    if (isExtractingTempFile) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Opening file") },
+            text = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator()
+                    Text("Extracting from archive...")
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    resolvedViewerTarget?.let { target ->
         val category = categoryOf(target)
         val ext = target.extension
         when {
             category == FileCategory.IMAGE -> {
-                ImageViewer(item = target, onClose = { activeViewerTarget = null })
+                ImageViewer(item = target, onClose = { 
+                    activeViewerTarget = null
+                    resolvedViewerTarget = null
+                })
                 return
             }
             category == FileCategory.AUDIO -> {
-                AudioPlayer(item = target, onClose = { activeViewerTarget = null })
+                AudioPlayer(item = target, onClose = { 
+                    activeViewerTarget = null
+                    resolvedViewerTarget = null
+                })
                 return
             }
             category == FileCategory.CODE || (category == FileCategory.DOCUMENT && (ext == "txt" || ext == "md")) -> {
-                TextEditor(item = target, onClose = { activeViewerTarget = null })
+                TextEditor(item = target, onClose = { 
+                    activeViewerTarget = null
+                    resolvedViewerTarget = null
+                })
                 return
             }
             else -> {
                 openFile(context, target)
                 activeViewerTarget = null
+                resolvedViewerTarget = null
             }
         }
     }
@@ -184,7 +252,8 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                         startMove()
                     },
                     onDelete = { requestDelete() },
-                    onShare = { shareFiles(context, state.selectedItems) }
+                    onShare = { shareFiles(context, state.selectedItems) },
+                    onCompress = { showCompressSelectedDialog = true }
                 )
                 state.searchQuery != null -> SearchTopBar(
                     query = state.searchQuery.orEmpty(),
@@ -263,7 +332,7 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                                 parentRelativePath(state.currentPath, item.path).takeIf { path -> path.isNotEmpty() }
                             },
                             onClick = {
-                                if (state.selectionMode || item.isDirectory) {
+                                if (state.selectionMode || item.isDirectory || item.extension == "zip") {
                                     viewModel.onItemClick(item)
                                 } else {
                                     activeViewerTarget = item
@@ -328,13 +397,41 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
 
     detailsTarget?.let { DetailsDialog(item = it, onDismiss = { detailsTarget = null }) }
 
+    compressTargetSingle?.let { target ->
+        val defaultZipName = if (target.isDirectory) "${target.name}.zip" else "${target.file.nameWithoutExtension}.zip"
+        NameInputDialog(
+            title = "Compress to ZIP",
+            initialValue = defaultZipName,
+            confirmLabel = "Compress",
+            onConfirm = {
+                viewModel.compressSingle(target, it)
+                compressTargetSingle = null
+            },
+            onDismiss = { compressTargetSingle = null }
+        )
+    }
+
+    if (showCompressSelectedDialog) {
+        val defaultZipName = "archive.zip"
+        NameInputDialog(
+            title = "Compress selected to ZIP",
+            initialValue = defaultZipName,
+            confirmLabel = "Compress",
+            onConfirm = {
+                viewModel.compressSelected(it)
+                showCompressSelectedDialog = false
+            },
+            onDismiss = { showCompressSelectedDialog = false }
+        )
+    }
+
     sheetTarget?.let { target ->
         ItemActionsSheet(
             item = target,
             onDismiss = { sheetTarget = null },
             onOpen = {
                 sheetTarget = null
-                if (target.isDirectory) {
+                if (target.isDirectory || target.extension == "zip") {
                     viewModel.navigateTo(target.path)
                 } else {
                     activeViewerTarget = target
@@ -368,6 +465,14 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
             onDetails = {
                 sheetTarget = null
                 detailsTarget = target
+            },
+            onCompress = {
+                sheetTarget = null
+                compressTargetSingle = target
+            },
+            onExtract = {
+                sheetTarget = null
+                viewModel.extractZip(target)
             }
         )
     }
@@ -441,7 +546,8 @@ private fun SelectionTopBar(
     onCopy: () -> Unit,
     onCut: () -> Unit,
     onDelete: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onCompress: () -> Unit
 ) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -455,6 +561,7 @@ private fun SelectionTopBar(
             IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, contentDescription = "Copy") }
             IconButton(onClick = onCut) { Icon(Icons.Outlined.ContentCut, contentDescription = "Cut") }
             IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, contentDescription = "Share") }
+            IconButton(onClick = onCompress) { Icon(Icons.Outlined.FolderZip, contentDescription = "Compress") }
             IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, contentDescription = "Delete") }
             IconButton(onClick = onSelectAll) { Icon(Icons.Outlined.SelectAll, contentDescription = "Select all") }
         }
@@ -532,15 +639,41 @@ private data class Crumb(val label: String, val path: String)
  * @return Ordered breadcrumb segments.
  */
 private fun parentRelativePath(searchRoot: String, itemPath: String): String {
+    if (itemPath.contains(".zip::", ignoreCase = true)) {
+        val index = itemPath.indexOf(".zip::", ignoreCase = true)
+        val relative = itemPath.substring(index + 6)
+        val lastSlash = relative.lastIndexOf('/')
+        return if (lastSlash == -1) "" else relative.substring(0, lastSlash)
+    }
     val parentPath = File(itemPath).parent ?: return ""
     if (parentPath == searchRoot) return ""
     return parentPath.removePrefix(searchRoot).trimStart('/')
 }
 
+private fun splitZipPath(path: String): Pair<String, String> {
+    val index = path.indexOf(".zip::", ignoreCase = true)
+    return if (index != -1) {
+        val zipPath = path.substring(0, index + 4)
+        val relativePath = path.substring(index + 6)
+        zipPath to relativePath
+    } else if (path.endsWith(".zip", ignoreCase = true)) {
+        path to ""
+    } else {
+        path to ""
+    }
+}
+
 private fun buildCrumbs(path: String, root: String): List<Crumb> {
-    val normalizedPath = runCatching { File(path).canonicalPath }.getOrDefault(path)
+    val result = mutableListOf<Crumb>()
     val normalizedRoot = runCatching { File(root).canonicalPath }.getOrDefault(root)
-    val result = mutableListOf(Crumb("Storage", normalizedRoot))
+    result.add(Crumb("Storage", normalizedRoot))
+
+    val (zipPath, relativeDir) = splitZipPath(path)
+    val hasZip = path.contains(".zip::", ignoreCase = true) || path.endsWith(".zip", ignoreCase = true)
+
+    val pathToProcess = if (hasZip) zipPath else path
+    val normalizedPath = runCatching { File(pathToProcess).canonicalPath }.getOrDefault(pathToProcess)
+
     if (normalizedPath.startsWith(normalizedRoot) && normalizedPath.length > normalizedRoot.length) {
         val relative = normalizedPath.removePrefix(normalizedRoot).trim('/')
         var acc = normalizedRoot
@@ -549,6 +682,16 @@ private fun buildCrumbs(path: String, root: String): List<Crumb> {
             result.add(Crumb(part, acc))
         }
     }
+
+    if (hasZip && relativeDir.isNotEmpty()) {
+        val segments = relativeDir.split("/").filter { it.isNotEmpty() }
+        var acc = zipPath
+        segments.forEach { part ->
+            acc = if (acc == zipPath) "$acc::$part" else "$acc/$part"
+            result.add(Crumb(part, acc))
+        }
+    }
+
     return result
 }
 
@@ -566,7 +709,9 @@ private fun ItemActionsSheet(
     onDelete: () -> Unit,
     onCopy: () -> Unit,
     onCut: () -> Unit,
-    onDetails: () -> Unit
+    onDetails: () -> Unit,
+    onCompress: () -> Unit,
+    onExtract: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
@@ -582,6 +727,10 @@ private fun ItemActionsSheet(
         SheetAction(Icons.Outlined.ContentCut, "Move", onCut)
         SheetAction(Icons.Outlined.DriveFileRenameOutline, "Rename", onRename)
         if (!item.isDirectory) SheetAction(Icons.Outlined.Share, "Share", onShare)
+        SheetAction(Icons.Outlined.FolderZip, "Compress to ZIP", onCompress)
+        if (item.extension == "zip") {
+            SheetAction(Icons.Outlined.FolderZip, "Extract ZIP", onExtract)
+        }
         SheetAction(Icons.Outlined.Info, "Details", onDetails)
         SheetAction(Icons.Outlined.Delete, "Delete", onDelete)
         Box(modifier = Modifier.padding(bottom = 24.dp))

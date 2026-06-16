@@ -60,8 +60,9 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
      * @param path Absolute path of the directory to open.
      */
     fun navigateTo(path: String) {
+        val isZip = fileManager.isZipPath(path)
         val dir = File(path)
-        if (!dir.exists() || !dir.isDirectory) {
+        if (!isZip && (!dir.exists() || !dir.isDirectory)) {
             _uiState.update {
                 it.copy(
                     errorMessage = "Folder not found",
@@ -79,10 +80,10 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
                 selectionMode = false,
                 searchQuery = null,
                 accessDenied = false,
-                canNavigateUp = path != rootPath && dir.parentFile != null
+                canNavigateUp = path != rootPath && fileManager.getParentPath(path, rootPath) != null
             )
         }
-        if (settingsStore.snapshot().rememberLastFolder) {
+        if (settingsStore.snapshot().rememberLastFolder && !isZip) {
             settingsStore.setLastBrowsedPath(path)
         }
         refresh()
@@ -92,9 +93,9 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
      * Navigates to the parent of the current directory when possible.
      */
     fun navigateUp() {
-        val parent = File(_uiState.value.currentPath).parentFile ?: return
         if (_uiState.value.currentPath == rootPath) return
-        navigateTo(parent.absolutePath)
+        val parent = fileManager.getParentPath(_uiState.value.currentPath, rootPath) ?: return
+        navigateTo(parent)
     }
 
     /**
@@ -110,7 +111,11 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
         }
         viewModelScope.launch {
             val listing = withContext(Dispatchers.IO) {
-                fileManager.list(File(state.currentPath), state.sortOrder, state.showHidden)
+                if (fileManager.isZipPath(state.currentPath)) {
+                    fileManager.listZip(state.currentPath, state.sortOrder)
+                } else {
+                    fileManager.list(File(state.currentPath), state.sortOrder, state.showHidden)
+                }
             }
             _uiState.update {
                 it.copy(
@@ -136,7 +141,7 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
     fun onItemClick(item: FileItem) {
         if (_uiState.value.selectionMode) {
             toggleSelection(item)
-        } else if (item.isDirectory) {
+        } else if (item.isDirectory || item.extension == "zip") {
             navigateTo(item.path)
         }
     }
@@ -369,6 +374,91 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
                     selected = emptySet(),
                     selectionMode = false,
                     errorMessage = if (ok) null else "Operation failed"
+                )
+            }
+            refresh()
+        }
+    }
+
+    fun extractZipEntryToCache(item: FileItem): File? {
+        val (zipPath, entryPath) = fileManager.splitZipPath(item.path)
+        val zipFile = File(zipPath)
+        if (!zipFile.exists() || !zipFile.isFile) return null
+        
+        val tempDir = File(getApplication<Application>().cacheDir, "zip_temp")
+        if (!tempDir.exists()) tempDir.mkdirs()
+        
+        val tempFile = File(tempDir, item.name)
+        if (tempFile.exists()) tempFile.delete()
+        
+        return try {
+            java.util.zip.ZipFile(zipFile).use { jZip ->
+                val entry = jZip.getEntry(entryPath) ?: return null
+                jZip.getInputStream(entry).use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            tempFile
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    fun extractZip(item: FileItem) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val ok = withContext(Dispatchers.IO) {
+                val currentDir = File(_uiState.value.currentPath)
+                fileManager.extractZipTo(item.file, currentDir)
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = if (ok) null else "Extraction failed"
+                )
+            }
+            refresh()
+        }
+    }
+
+    fun compressSelected(zipName: String) {
+        val itemsToCompress = _uiState.value.selectedItems.map { it.file }
+        if (itemsToCompress.isEmpty()) return
+        
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val ok = withContext(Dispatchers.IO) {
+                val currentDir = File(_uiState.value.currentPath)
+                val targetZip = File(currentDir, zipName)
+                fileManager.compressToZip(itemsToCompress, targetZip)
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    selected = emptySet(),
+                    selectionMode = false,
+                    errorMessage = if (ok) null else "Compression failed"
+                )
+            }
+            refresh()
+        }
+    }
+
+    fun compressSingle(item: FileItem, zipName: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val ok = withContext(Dispatchers.IO) {
+                val currentDir = File(_uiState.value.currentPath)
+                val targetZip = File(currentDir, zipName)
+                fileManager.compressToZip(listOf(item.file), targetZip)
+            }
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    errorMessage = if (ok) null else "Compression failed"
                 )
             }
             refresh()

@@ -183,4 +183,170 @@ class FileManager(private val context: Context) {
         }
         return candidate
     }
+
+    fun isZipPath(path: String): Boolean {
+        return path.contains(".zip::", ignoreCase = true) || path.endsWith(".zip", ignoreCase = true)
+    }
+
+    fun splitZipPath(path: String): Pair<String, String> {
+        val index = path.indexOf(".zip::", ignoreCase = true)
+        return if (index != -1) {
+            val zipPath = path.substring(0, index + 4)
+            val relativePath = path.substring(index + 6)
+            zipPath to relativePath
+        } else if (path.endsWith(".zip", ignoreCase = true)) {
+            path to ""
+        } else {
+            path to ""
+        }
+    }
+
+    fun getParentPath(path: String, rootPath: String): String? {
+        if (path == rootPath) return null
+        if (path.contains(".zip::", ignoreCase = true)) {
+            val index = path.indexOf(".zip::", ignoreCase = true)
+            val zipPath = path.substring(0, index + 4)
+            val relativePath = path.substring(index + 6)
+            if (relativePath.isEmpty()) {
+                return File(zipPath).parent
+            }
+            val lastSlash = relativePath.lastIndexOf('/')
+            return if (lastSlash == -1) {
+                zipPath
+            } else {
+                zipPath + "::" + relativePath.substring(0, lastSlash)
+            }
+        }
+        return File(path).parent
+    }
+
+    fun listZip(virtualPath: String, sortOrder: SortOrder): DirectoryListing {
+        val (zipPath, relativeDir) = splitZipPath(virtualPath)
+        val zipFile = File(zipPath)
+        if (!zipFile.exists() || !zipFile.isFile) return DirectoryListing(accessDenied = true)
+
+        val items = mutableListOf<FileItem>()
+        return try {
+            java.util.zip.ZipFile(zipFile).use { jZip ->
+                val prefix = if (relativeDir.isEmpty()) "" else if (relativeDir.endsWith("/")) relativeDir else "$relativeDir/"
+                val seenDirectories = mutableSetOf<String>()
+                val entries = jZip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val name = entry.name
+                    if (name.startsWith(prefix) && name != prefix) {
+                        val relativePart = name.substring(prefix.length)
+                        if (relativePart.isEmpty()) continue
+                        val slashIndex = relativePart.indexOf('/')
+                        if (slashIndex != -1) {
+                            val dirName = relativePart.substring(0, slashIndex)
+                            val fullVirtualDirPath = if (prefix.isEmpty()) dirName else "$prefix$dirName"
+                            if (seenDirectories.add(dirName)) {
+                                items.add(
+                                    FileItem(
+                                        file = File("$zipPath::$fullVirtualDirPath"),
+                                        name = dirName,
+                                        isDirectory = true,
+                                        size = 0L,
+                                        lastModified = entry.time,
+                                        childCount = null
+                                    )
+                                )
+                            }
+                        } else {
+                            val fileName = relativePart
+                            val fullVirtualFilePath = if (prefix.isEmpty()) fileName else "$prefix$fileName"
+                            items.add(
+                                FileItem(
+                                    file = File("$zipPath::$fullVirtualFilePath"),
+                                    name = fileName,
+                                    isDirectory = false,
+                                    size = entry.size,
+                                    lastModified = entry.time,
+                                    childCount = null
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            DirectoryListing(items = sort(items, sortOrder))
+        } catch (e: Exception) {
+            e.printStackTrace()
+            DirectoryListing(accessDenied = true)
+        }
+    }
+
+    fun extractZipTo(zipFile: File, destinationDir: File): Boolean {
+        if (!zipFile.exists() || !zipFile.isFile) return false
+        if (!destinationDir.exists()) {
+            destinationDir.mkdirs()
+        }
+        return try {
+            java.util.zip.ZipFile(zipFile).use { jZip ->
+                val entries = jZip.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val targetFile = File(destinationDir, entry.name)
+                    val canonicalDest = destinationDir.canonicalPath
+                    val canonicalTarget = targetFile.canonicalPath
+                    if (!canonicalTarget.startsWith(canonicalDest)) {
+                        continue
+                    }
+                    if (entry.isDirectory) {
+                        targetFile.mkdirs()
+                    } else {
+                        targetFile.parentFile?.mkdirs()
+                        jZip.getInputStream(entry).use { input ->
+                            targetFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    fun compressToZip(items: List<File>, zipFile: File): Boolean {
+        return try {
+            java.io.FileOutputStream(zipFile).use { fos ->
+                java.util.zip.ZipOutputStream(fos).use { zos ->
+                    for (file in items) {
+                        compressFileOrFolder(file, file.name, zos)
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private fun compressFileOrFolder(file: File, pathInZip: String, zos: java.util.zip.ZipOutputStream) {
+        if (file.isDirectory) {
+            val children = file.listFiles()
+            if (children.isNullOrEmpty()) {
+                val entry = java.util.zip.ZipEntry(if (pathInZip.endsWith("/")) pathInZip else "$pathInZip/")
+                zos.putNextEntry(entry)
+                zos.closeEntry()
+            } else {
+                for (child in children) {
+                    compressFileOrFolder(child, "$pathInZip/${child.name}", zos)
+                }
+            }
+        } else {
+            val entry = java.util.zip.ZipEntry(pathInZip)
+            zos.putNextEntry(entry)
+            java.io.FileInputStream(file).use { fis ->
+                fis.copyTo(zos)
+            }
+            zos.closeEntry()
+        }
+    }
 }
