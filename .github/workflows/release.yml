@@ -82,9 +82,10 @@ jobs:
             -in app/keystore/release.keystore.enc \
             -out "$RUNNER_TEMP/release.keystore" \
             -pass "file:$RUNNER_TEMP/aes.key"
-          keytool -list \
+          echo "Aliases in decrypted keystore:"
+          keytool -list -v \
             -keystore "$RUNNER_TEMP/release.keystore" \
-            -storepass "$KEYSTORE_PASSWORD" > /dev/null
+            -storepass "$KEYSTORE_PASSWORD" 2>&1 | grep "Alias name"
           rm "$RUNNER_TEMP/private_key.pem" "$RUNNER_TEMP/aes.key"
 
       - name: Build signed release APK
