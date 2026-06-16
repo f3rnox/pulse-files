@@ -50,6 +50,24 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
+      - name: Validate secrets
+        env:
+          ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=()
+          [ -z "$ENCRYPTION_PRIVATE_KEY" ] && missing+=("ENCRYPTION_PRIVATE_KEY")
+          [ -z "$KEYSTORE_PASSWORD" ]      && missing+=("KEYSTORE_PASSWORD")
+          [ -z "$KEY_ALIAS" ]              && missing+=("KEY_ALIAS")
+          [ -z "$KEY_PASSWORD" ]           && missing+=("KEY_PASSWORD")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            echo "Add them at Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
       - name: Decrypt keystore
         env:
           ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
