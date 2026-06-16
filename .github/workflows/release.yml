@@ -151,6 +151,5 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: Build ${{ github.run_number }}
-          body: |
-            Automated signed release build from commit ${{ github.sha }}.
+          body_path: RELEASE_NOTES.md
           files: app/build/outputs/apk/release/app-release.apk
