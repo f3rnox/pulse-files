@@ -27,7 +27,7 @@ permissions:
 #   Required GitHub secrets:
 #     ENCRYPTION_PRIVATE_KEY  – RSA private key, base64-encoded: base64 -w0 private_key.pem
 #     KEYSTORE_PASSWORD       – keystore store password
-#     KEY_ALIAS               – signing key alias
+#     KEY_ALIAS               – optional signing key alias (required only if the keystore has multiple keys)
 #     KEY_PASSWORD            – signing key password
 
 jobs:
@@ -54,13 +54,11 @@ jobs:
         env:
           ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           missing=()
           [ -z "$ENCRYPTION_PRIVATE_KEY" ] && missing+=("ENCRYPTION_PRIVATE_KEY")
           [ -z "$KEYSTORE_PASSWORD" ]      && missing+=("KEYSTORE_PASSWORD")
-          [ -z "$KEY_ALIAS" ]              && missing+=("KEY_ALIAS")
           [ -z "$KEY_PASSWORD" ]           && missing+=("KEY_PASSWORD")
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required secrets: ${missing[*]}"
@@ -72,6 +70,7 @@ jobs:
         env:
           ENCRYPTION_PRIVATE_KEY: ${{ secrets.ENCRYPTION_PRIVATE_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           echo "$ENCRYPTION_PRIVATE_KEY" | base64 -d > "$RUNNER_TEMP/private_key.pem"
           openssl pkeyutl -decrypt \
@@ -85,13 +84,60 @@ jobs:
           keytool -list \
             -keystore "$RUNNER_TEMP/release.keystore" \
             -storepass "$KEYSTORE_PASSWORD" > /dev/null
+
+          mapfile -t private_key_aliases < <(
+            keytool -list -v \
+              -keystore "$RUNNER_TEMP/release.keystore" \
+              -storepass "$KEYSTORE_PASSWORD" |
+              awk '
+                /^Alias name: / { alias_name = substr($0, 13) }
+                /^Entry type: PrivateKeyEntry/ && alias_name != "" { print alias_name }
+              '
+          )
+
+          if [ ${#private_key_aliases[@]} -eq 0 ]; then
+            echo "::error::No private key entries found in the release keystore."
+            exit 1
+          fi
+
+          signing_alias="$KEY_ALIAS"
+          alias_matches=false
+          if [ -n "$signing_alias" ]; then
+            for private_key_alias in "${private_key_aliases[@]}"; do
+              if [ "$private_key_alias" = "$signing_alias" ]; then
+                alias_matches=true
+                break
+              fi
+            done
+          fi
+
+          if [ "$alias_matches" = true ]; then
+            echo "Using configured signing alias."
+          elif [ ${#private_key_aliases[@]} -eq 1 ]; then
+            if [ -n "$signing_alias" ]; then
+              echo "::warning::KEY_ALIAS does not match a private key in the keystore; using the only private key alias found."
+            else
+              echo "Using the only private key alias found in the keystore."
+            fi
+            signing_alias="${private_key_aliases[0]}"
+          else
+            echo "::error::KEY_ALIAS must match a private key in the release keystore when multiple keys are present."
+            exit 1
+          fi
+
+          {
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore"
+            echo "KEY_ALIAS<<__SIGNING_ALIAS__"
+            echo "$signing_alias"
+            echo "__SIGNING_ALIAS__"
+          } >> "$GITHUB_ENV"
+
           rm "$RUNNER_TEMP/private_key.pem" "$RUNNER_TEMP/aes.key"
 
       - name: Build signed release APK
         env:
-          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK artifact
