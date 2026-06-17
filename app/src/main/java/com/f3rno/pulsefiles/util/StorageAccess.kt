@@ -22,6 +22,16 @@ fun primaryStoragePath(context: Context): String {
 }
 
 /**
+ * Resolves the absolute path of a public shared-storage directory.
+ *
+ * @param name One of the [Environment] `DIRECTORY_*` constants.
+ * @return Absolute path to the requested public directory.
+ */
+fun publicDirectoryPath(name: String): String {
+    return Environment.getExternalStoragePublicDirectory(name).absolutePath
+}
+
+/**
  * Launches the system settings screen for full files access permission,
  * falling back gracefully if needed.
  *

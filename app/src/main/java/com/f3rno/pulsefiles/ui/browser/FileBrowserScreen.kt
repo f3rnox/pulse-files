@@ -32,6 +32,10 @@ import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -109,10 +113,11 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
 
 
 
-    BackHandler(enabled = state.selectionMode || state.searchQuery != null || state.canNavigateUp) {
+    BackHandler(enabled = state.selectionMode || state.searchQuery != null || state.categoryFilter != null || state.canNavigateUp) {
         when {
             state.selectionMode -> viewModel.clearSelection()
             state.searchQuery != null -> viewModel.setSearchQuery(null)
+            state.categoryFilter != null -> viewModel.clearCategoryFilter()
             state.canNavigateUp -> viewModel.navigateUp()
         }
     }
@@ -323,6 +328,19 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                 storageRoot = primaryStoragePath(context),
                 onNavigate = viewModel::navigateTo
             )
+            if (!state.selectionMode && state.searchQuery == null) {
+                CategoryShortcuts(
+                    activeCategory = state.categoryFilter,
+                    onCategory = { category ->
+                        if (state.categoryFilter == category) {
+                            viewModel.clearCategoryFilter()
+                        } else {
+                            viewModel.browseCategory(category)
+                        }
+                    },
+                    onDownloads = viewModel::openDownloads
+                )
+            }
             HorizontalDivider()
             when {
                 state.isLoading -> Unit
@@ -332,7 +350,8 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                     onOpenSettings = { openAllFilesAccessSettings(context) }
                 )
                 state.items.isEmpty() -> EmptyState(
-                    hasHiddenFiles = state.hasHiddenFiles && state.searchQuery == null,
+                    hasHiddenFiles = state.hasHiddenFiles && state.searchQuery == null && state.categoryFilter == null,
+                    isCategoryFilter = state.categoryFilter != null,
                     onShowHidden = viewModel::toggleHidden
                 )
                 else -> LazyColumn(
@@ -343,8 +362,10 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                         FileRow(
                             item = item,
                             selected = item.path in state.selected,
-                            subtitlePrefix = state.searchQuery?.let {
+                            subtitlePrefix = if (state.searchQuery != null || state.categoryFilter != null) {
                                 parentRelativePath(state.currentPath, item.path).takeIf { path -> path.isNotEmpty() }
+                            } else {
+                                null
                             },
                             onClick = {
                                 if (state.selectionMode || item.isDirectory || item.extension == "zip") {
@@ -504,6 +525,64 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                 viewModel.pasteTo(path)
             },
             onDismiss = { showMoveDestination = false }
+        )
+    }
+}
+
+/**
+ * Horizontally scrollable row of category shortcuts that filter the storage by
+ * file type or jump to a known folder.
+ *
+ * @param activeCategory The currently active category filter, or null.
+ * @param onCategory Invoked with a category to toggle filtering by it.
+ * @param onDownloads Invoked to open the Downloads folder.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryShortcuts(
+    activeCategory: FileCategory?,
+    onCategory: (FileCategory) -> Unit,
+    onDownloads: () -> Unit
+) {
+    val categories = listOf(
+        FileCategory.IMAGE to "Images",
+        FileCategory.VIDEO to "Videos",
+        FileCategory.AUDIO to "Audio",
+        FileCategory.DOCUMENT to "Documents",
+        FileCategory.APK to "APKs"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        categories.forEach { (category, label) ->
+            FilterChip(
+                selected = activeCategory == category,
+                onClick = { onCategory(category) },
+                label = { Text(label) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = iconFor(category),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+        }
+        AssistChip(
+            onClick = onDownloads,
+            label = { Text("Downloads") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(AssistChipDefaults.IconSize)
+                )
+            }
         )
     }
 }
@@ -821,11 +900,13 @@ private fun AccessDeniedState(
  * Placeholder shown when a directory has no visible entries.
  *
  * @param hasHiddenFiles When true, the folder only contains hidden files.
+ * @param isCategoryFilter When true, an active category shortcut returned no matches.
  * @param onShowHidden Invoked when the user chooses to reveal hidden files.
  */
 @Composable
 private fun EmptyState(
     hasHiddenFiles: Boolean = false,
+    isCategoryFilter: Boolean = false,
     onShowHidden: () -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -840,7 +921,11 @@ private fun EmptyState(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = if (hasHiddenFiles) "No visible files" else "This folder is empty",
+                text = when {
+                    isCategoryFilter -> "No files in this category"
+                    hasHiddenFiles -> "No visible files"
+                    else -> "This folder is empty"
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (hasHiddenFiles) {

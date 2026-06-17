@@ -3,11 +3,14 @@ package com.f3rno.pulsefiles.ui.browser
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.os.Environment
 import com.f3rno.pulsefiles.data.SettingsStore
 import com.f3rno.pulsefiles.data.FileManager
+import com.f3rno.pulsefiles.model.FileCategory
 import com.f3rno.pulsefiles.model.FileItem
 import com.f3rno.pulsefiles.model.SortOrder
 import com.f3rno.pulsefiles.util.primaryStoragePath
+import com.f3rno.pulsefiles.util.publicDirectoryPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,6 +82,7 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
                 selected = emptySet(),
                 selectionMode = false,
                 searchQuery = null,
+                categoryFilter = null,
                 accessDenied = false,
                 canNavigateUp = path != rootPath && fileManager.getParentPath(path, rootPath) != null
             )
@@ -104,6 +108,11 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
     fun refresh() {
         val state = _uiState.value
         if (state.currentPath.isEmpty()) return
+        val category = state.categoryFilter
+        if (category != null) {
+            runCategorySearch(category)
+            return
+        }
         val query = state.searchQuery
         if (query != null) {
             runSearch(query)
@@ -205,12 +214,76 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
      * @param query The query text, or null to close search.
      */
     fun setSearchQuery(query: String?) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update { it.copy(searchQuery = query, categoryFilter = null) }
         if (query == null) {
             refresh()
             return
         }
         runSearch(query)
+    }
+
+    /**
+     * Browses all files of a category recursively from the storage root,
+     * reusing [FileManager.searchByCategory].
+     *
+     * @param category The category to filter by.
+     */
+    fun browseCategory(category: FileCategory) {
+        _uiState.update {
+            it.copy(
+                currentPath = rootPath,
+                categoryFilter = category,
+                searchQuery = null,
+                selected = emptySet(),
+                selectionMode = false,
+                isLoading = true,
+                canNavigateUp = false,
+                accessDenied = false
+            )
+        }
+        runCategorySearch(category)
+    }
+
+    /**
+     * Clears the active category filter and returns to the storage root listing.
+     */
+    fun clearCategoryFilter() {
+        _uiState.update { it.copy(categoryFilter = null) }
+        navigateTo(rootPath)
+    }
+
+    /**
+     * Opens the public Downloads directory.
+     */
+    fun openDownloads() {
+        navigateTo(publicDirectoryPath(Environment.DIRECTORY_DOWNLOADS))
+    }
+
+    private fun runCategorySearch(category: FileCategory) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val listing = withContext(Dispatchers.IO) {
+                fileManager.searchByCategory(
+                    File(state.currentPath),
+                    setOf(category),
+                    state.sortOrder,
+                    state.showHidden
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    items = listing.items,
+                    isLoading = false,
+                    accessDenied = listing.accessDenied,
+                    hasHiddenFiles = false,
+                    errorMessage = if (listing.accessDenied) {
+                        "Cannot read this folder. Grant \"All files access\" in system settings."
+                    } else {
+                        null
+                    }
+                )
+            }
+        }
     }
 
     private fun runSearch(query: String) {

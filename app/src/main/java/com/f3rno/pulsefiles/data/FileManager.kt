@@ -1,8 +1,10 @@
 package com.f3rno.pulsefiles.data
 
 import android.content.Context
+import com.f3rno.pulsefiles.model.FileCategory
 import com.f3rno.pulsefiles.model.FileItem
 import com.f3rno.pulsefiles.model.SortOrder
+import com.f3rno.pulsefiles.util.categoryOf
 import com.f3rno.pulsefiles.util.deleteStorageFile
 import com.f3rno.pulsefiles.util.listChildren
 import java.io.File
@@ -67,6 +69,46 @@ class FileManager(private val context: Context) {
         val matches = mutableListOf<FileItem>()
         collectMatches(root, trimmed, showHidden, matches)
         return DirectoryListing(items = sort(matches, sortOrder))
+    }
+
+    /**
+     * Recursively collects files under [root] whose [categoryOf] is contained in
+     * [categories]. Directories are descended into but never included as results.
+     *
+     * @param root The directory to search from.
+     * @param categories The set of categories to match.
+     * @param sortOrder The ordering to apply to results.
+     * @param showHidden Whether dot-files should be included.
+     * @return Matching files or an access-denied flag.
+     */
+    fun searchByCategory(
+        root: File,
+        categories: Set<FileCategory>,
+        sortOrder: SortOrder,
+        showHidden: Boolean
+    ): DirectoryListing {
+        if (listChildren(root) == null) return DirectoryListing(accessDenied = root.exists())
+        val matches = mutableListOf<FileItem>()
+        collectByCategory(root, categories, showHidden, matches)
+        return DirectoryListing(items = sort(matches, sortOrder))
+    }
+
+    private fun collectByCategory(
+        dir: File,
+        categories: Set<FileCategory>,
+        showHidden: Boolean,
+        out: MutableList<FileItem>
+    ) {
+        val children = listChildren(dir) ?: return
+        for (child in children) {
+            if (!showHidden && child.name.startsWith(".")) continue
+            if (child.isDirectory) {
+                collectByCategory(child, categories, showHidden, out)
+            } else {
+                val item = FileItem.from(child)
+                if (categoryOf(item) in categories) out.add(item)
+            }
+        }
     }
 
     private fun collectMatches(dir: File, query: String, showHidden: Boolean, out: MutableList<FileItem>) {

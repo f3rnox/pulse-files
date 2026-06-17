@@ -1,5 +1,6 @@
 package com.f3rno.pulsefiles.ui.browser
 
+import com.f3rno.pulsefiles.model.FileCategory
 import com.f3rno.pulsefiles.model.FileItem
 import com.f3rno.pulsefiles.model.SortOrder
 
@@ -31,6 +32,7 @@ data class Clipboard(
  * @property showHidden Whether hidden files are shown.
  * @property confirmBeforeDelete Whether deletes require confirmation.
  * @property searchQuery Current search filter text, or null when search is closed.
+ * @property categoryFilter Active category shortcut, or null when not browsing a category.
  * @property clipboard Staged copy/move clipboard, or null when empty.
  * @property canNavigateUp Whether the parent directory is reachable.
  * @property accessDenied Whether the current directory could not be read.
@@ -47,6 +49,7 @@ data class BrowserUiState(
     val showHidden: Boolean = false,
     val confirmBeforeDelete: Boolean = true,
     val searchQuery: String? = null,
+    val categoryFilter: FileCategory? = null,
     val clipboard: Clipboard? = null,
     val canNavigateUp: Boolean = false,
     val accessDenied: Boolean = false,
