@@ -12,10 +12,13 @@ import java.io.File
  *
  * @property items Sorted entries when access succeeded.
  * @property accessDenied True when the directory exists but cannot be read.
+ * @property hasHiddenFiles True when the directory contains dot-files that were
+ *   filtered out because [FileManager.list] was called with `showHidden = false`.
  */
 data class DirectoryListing(
     val items: List<FileItem> = emptyList(),
-    val accessDenied: Boolean = false
+    val accessDenied: Boolean = false,
+    val hasHiddenFiles: Boolean = false
 )
 
 /**
@@ -37,10 +40,11 @@ class FileManager(private val context: Context) {
      */
     fun list(dir: File, sortOrder: SortOrder, showHidden: Boolean): DirectoryListing {
         val children = listChildren(dir) ?: return DirectoryListing(accessDenied = dir.exists())
+        val hasHiddenFiles = !showHidden && children.any { it.name.startsWith(".") }
         val items = children
             .filter { showHidden || !it.name.startsWith(".") }
             .map { FileItem.from(it) }
-        return DirectoryListing(items = sort(items, sortOrder))
+        return DirectoryListing(items = sort(items, sortOrder), hasHiddenFiles = hasHiddenFiles)
     }
 
     /**

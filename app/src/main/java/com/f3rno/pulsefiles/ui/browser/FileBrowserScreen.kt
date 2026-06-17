@@ -49,6 +49,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -330,7 +331,10 @@ fun FileBrowserScreen(viewModel: FileBrowserViewModel = viewModel()) {
                     onNavigateUp = viewModel::navigateUp,
                     onOpenSettings = { openAllFilesAccessSettings(context) }
                 )
-                state.items.isEmpty() -> EmptyState()
+                state.items.isEmpty() -> EmptyState(
+                    hasHiddenFiles = state.hasHiddenFiles && state.searchQuery == null,
+                    onShowHidden = viewModel::toggleHidden
+                )
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 88.dp)
@@ -815,20 +819,41 @@ private fun AccessDeniedState(
 
 /**
  * Placeholder shown when a directory has no visible entries.
+ *
+ * @param hasHiddenFiles When true, the folder only contains hidden files.
+ * @param onShowHidden Invoked when the user chooses to reveal hidden files.
  */
 @Composable
-private fun EmptyState() {
+private fun EmptyState(
+    hasHiddenFiles: Boolean = false,
+    onShowHidden: () -> Unit = {}
+) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 32.dp)
         ) {
             Icon(
                 Icons.Outlined.FolderOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text("This folder is empty", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = if (hasHiddenFiles) "No visible files" else "This folder is empty",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (hasHiddenFiles) {
+                Text(
+                    text = "This folder contains hidden files. Show hidden files from the menu to view them.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                TextButton(onClick = onShowHidden) {
+                    Text("Show hidden files")
+                }
+            }
         }
     }
 }

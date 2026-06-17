@@ -34,6 +34,7 @@ data class Clipboard(
  * @property clipboard Staged copy/move clipboard, or null when empty.
  * @property canNavigateUp Whether the parent directory is reachable.
  * @property accessDenied Whether the current directory could not be read.
+ * @property hasHiddenFiles Whether the current directory has hidden files not shown.
  * @property errorMessage Transient error to surface, or null.
  */
 data class BrowserUiState(
@@ -49,6 +50,7 @@ data class BrowserUiState(
     val clipboard: Clipboard? = null,
     val canNavigateUp: Boolean = false,
     val accessDenied: Boolean = false,
+    val hasHiddenFiles: Boolean = false,
     val errorMessage: String? = null
 ) {
     val selectedItems: List<FileItem> get() = items.filter { it.path in selected }

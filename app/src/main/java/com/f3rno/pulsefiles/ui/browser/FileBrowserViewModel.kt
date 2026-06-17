@@ -122,6 +122,7 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
                     items = listing.items,
                     isLoading = false,
                     accessDenied = listing.accessDenied,
+                    hasHiddenFiles = listing.hasHiddenFiles,
                     errorMessage = if (listing.accessDenied) {
                         "Cannot read this folder. Grant \"All files access\" in system settings."
                     } else {
@@ -231,6 +232,7 @@ class FileBrowserViewModel(application: Application) : AndroidViewModel(applicat
                     items = listing.items,
                     isLoading = false,
                     accessDenied = listing.accessDenied,
+                    hasHiddenFiles = false,
                     errorMessage = if (listing.accessDenied) {
                         "Cannot read this folder. Grant \"All files access\" in system settings."
                     } else {
